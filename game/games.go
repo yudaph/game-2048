@@ -1,18 +1,29 @@
 package game
 
 import (
-	"bufio"
-	"fmt"
 	"math/rand"
-	"os"
-	"os/exec"
 	"time"
 )
 
+// Games is core interface
 type Games interface {
 	Start(width, target int)
+	SpawnNewValue(numberOfValue int)
 }
 
+// Input is interface to get input to the game
+type Input interface {
+	MoveTo(action Move)
+}
+
+// Output is interface display the game
+type Output interface {
+	GetArena() [][]int
+	IsWin() bool
+	IsLost() bool
+}
+
+// gameStruct is core struct, where the game is actually saved and processed
 type gameStruct struct {
 	width  int
 	target int
@@ -20,11 +31,12 @@ type gameStruct struct {
 	win    bool
 }
 
+// NewGameStruct create empty gameStruct
 func NewGameStruct() *gameStruct {
-	games := new(gameStruct)
-	return games
+	return &gameStruct{}
 }
 
+// Start to create game arena and set win value to achieve
 func (g *gameStruct) Start(width, target int) {
 	g.width = width
 	g.arena = make([][]int, width)
@@ -38,36 +50,51 @@ func (g *gameStruct) Start(width, target int) {
 		}
 		g.arena[i] = col
 	}
-	g.spawnValue(2)
-	g.cycle()
 }
 
-func (g *gameStruct) cycle() {
-	g.clean()
-	g.print()
-	char, err := g.input()
-	if err != nil {
-		fmt.Println("Error", err)
+// SpawnNewValue to add number of values to arena in random position
+func (g *gameStruct) SpawnNewValue(numberOfValue int) {
+	// search is there any 0 (zero) value in arena
+	s := newSearchZero()
+	g.searchArena(s)
+
+	// return if there is no 0 (zero) value
+	if !s.found {
 		return
 	}
-	//fmt.Println(char)
-	g.inputProcess(char)
-	//fmt.Println(char)
-	if !g.win {
-		g.spawnValue(2)
-		if g.checkLost() {
-			g.clean()
-			fmt.Println("You Lost")
-			g.print()
-			return
+
+	// init random index to spawn value in random position
+	rand.Seed(time.Now().UnixNano())
+	i, ii := -1, -1
+	// loop random index
+	for {
+		//if random index generated value equals to 0 (zero) spawn new number there and broke loop
+		i, ii = rand.Intn(g.width), rand.Intn(g.width)
+		if g.arena[i][ii] == 0 {
+			g.arena[i][ii] = 2
+			break
 		}
-		g.cycle()
-	} else {
-		g.printWin()
+	}
+
+	// if we need to spawn another value, call this function again
+	numberOfValue--
+	if numberOfValue > 0 {
+		g.SpawnNewValue(numberOfValue)
 	}
 }
 
-func (g *gameStruct) checkLost() bool {
+// GetArena to get current state of arena
+func (g *gameStruct) GetArena() [][]int {
+	return g.arena
+}
+
+// IsWin to get current state of win
+func (g *gameStruct) IsWin() bool {
+	return g.win
+}
+
+// IsLost to check if there is no possible move
+func (g *gameStruct) IsLost() bool {
 	newG := &gameStruct{}
 
 	//copy arena to newG
@@ -78,87 +105,50 @@ func (g *gameStruct) checkLost() bool {
 		copy(newG.arena[i], g.arena[i])
 	}
 
-	//fmt.Println(newG.arena, g.arena)
+	//if newG move left change arena return false
 	newG.actionArena(newMoveLeft())
 	compare := newCompareArena(newG.arena)
 	g.searchArena(compare)
 	if compare.notEquals {
 		return false
 	}
-	//fmt.Println(newG.arena, g.arena)
 
+	//if newG move right change arena return false
 	newG.actionArena(newMoveRight())
 	compare = newCompareArena(newG.arena)
 	g.searchArena(compare)
 	if compare.notEquals {
 		return false
 	}
-	//fmt.Println(newG.arena, g.arena)
 
+	//if newG move top change arena return false
 	newG.actionArena(newMoveTop())
 	compare = newCompareArena(newG.arena)
 	g.searchArena(compare)
 	if compare.notEquals {
 		return false
 	}
-	//fmt.Println(newG.arena, g.arena)
 
+	//if newG move down change arena return false
 	newG.actionArena(newMoveDown())
 	compare = newCompareArena(newG.arena)
 	g.searchArena(compare)
 	if compare.notEquals {
 		return false
 	}
-	//fmt.Println(newG.arena, g.arena)
 
+	// if all move didn't change arena return true
 	return true
 }
 
-func (g *gameStruct) printWin() {
-	g.clean()
-	fmt.Println("You win")
-	g.print()
+// MoveTo to move value inside the arena to desire direction
+func (g *gameStruct) MoveTo(action Move) {
+	g.actionArena(action)
 }
 
-func (g *gameStruct) input() (char rune, err error) {
-	reader := bufio.NewReader(os.Stdin)
-	char, _, err = reader.ReadRune()
-	if err != nil {
-		return
-	}
-	return
-}
+// private function
 
-func (g *gameStruct) inputProcess(char rune) {
-	var move Action
-	switch char {
-	case 97 | 65:
-		move = newMoveLeft()
-	case 100 | 68:
-		move = newMoveRight()
-	case 119 | 87:
-		move = newMoveTop()
-	case 115 | 83:
-		move = newMoveDown()
-	}
-	g.actionArena(move)
-}
-
-func (g *gameStruct) clean() {
-	cmd := exec.Command("cmd", "/c", "cls")
-	cmd.Stdout = os.Stdout
-	err := cmd.Run()
-	if err != nil {
-		return
-	}
-}
-
-func (g *gameStruct) print() {
-	for _, v := range g.arena {
-		fmt.Println(v)
-	}
-}
-
+// function to search or compare value in arena column
 func (g *gameStruct) searchArena(f functionSearch) {
 	for i := 0; i < g.width; i++ {
 		for ii := 0; ii < g.width; ii++ {
@@ -173,32 +163,13 @@ func (g *gameStruct) searchArena(f functionSearch) {
 	}
 }
 
-func (g *gameStruct) actionArena(f Action) {
+// function to move value in arena
+func (g *gameStruct) actionArena(f Move) {
 	for i := 0; i < g.width; i++ {
 		for ii := 0; ii < g.width; ii++ {
-			f.search(i, ii, g)
+			f.checkCell(i, ii, g)
 		}
-		f.reset(g)
+		f.reposition(g)
 	}
-}
-
-func (g *gameStruct) spawnValue(numberOfValue int) {
-	s := newSearchZero()
-	g.searchArena(s)
-	if !s.found {
-		return
-	}
-	rand.Seed(time.Now().UnixNano())
-	i, ii := -1, -1
-	for {
-		i, ii = rand.Intn(g.width), rand.Intn(g.width)
-		if g.arena[i][ii] == 0 {
-			g.arena[i][ii] = 2
-			break
-		}
-	}
-	numberOfValue--
-	if numberOfValue > 0 {
-		g.spawnValue(numberOfValue)
-	}
+	f.reset()
 }
